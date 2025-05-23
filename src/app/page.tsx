@@ -33,6 +33,7 @@ import {
 } from "firebase/auth";
 
 import { IProvider } from "@web3auth/base";
+import Link from "next/link";
 
 const verifier = "w3a-firebase-demo";
 
@@ -393,15 +394,21 @@ function App() {
   };
 
   const GradientHeadline = () => (
-    <h1 className="text-center text-4xl font-extrabold mb-8 leading-tight">
+    <h1 className="text-center text-4xl font-extrabold mb-4 leading-tight">
       <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
         Web3Auth tKey
-      </span>{" "}
-      &<span className="font-semibold">NextJS</span>
-      <br />
-      <span className="text-xl font-medium text-slate-700">
-        Quick&nbsp;Start
       </span>
+      <div className="flex justify-center mt-4">
+        <Link
+          href="https://github.com/Web3Auth/web3auth-core-kit-examples/tree/main/tkey-web/quick-starts/tkey-nextjs-quick-start"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm text-slate-600 hover:text-slate-900 transition-colors flex items-center gap-1"
+        >
+          <FileKey2 size={14} />
+          View Source Code
+        </Link>
+      </div>
     </h1>
   );
 
@@ -475,7 +482,7 @@ function App() {
 
       <div className="space-y-2">
         <label className="text-sm font-medium text-slate-600 flex items-center gap-1">
-          <Copy size={14} /> Backup / Device Share
+          <HardDrive size={14} /> Device Share
         </label>
         <Input
           placeholder="Paste your device share…"
@@ -494,15 +501,6 @@ function App() {
         disabled={!tKeyInitialised || !recoveryShare}
       >
         <KeyRound className="mr-2" size={18} /> Input Recovery Share
-      </Button>
-
-      <Button
-        variant="destructive"
-        className="w-full"
-        onClick={criticalResetAccount}
-        disabled={!serviceProviderInitialized}
-      >
-        <Shield className="mr-2" size={18} /> [CRITICAL] Reset Account
       </Button>
 
       <div className="space-y-2">
@@ -539,17 +537,26 @@ function App() {
             <GradientHeadline />
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           {loggedIn ? loggedInView : unloggedInView}
           <LogViewer />
-          <a
-            href="https://github.com/Web3Auth/web3auth-core-kit-examples/tree/main/tkey-web/quick-starts/tkey-nextjs-quick-start"
-            target="_blank"
-            rel="noreferrer"
-            className="block text-center underline text-sm mt-6 text-blue-600 hover:text-indigo-600"
-          >
-            Source code
-          </a>
+          <div className="flex justify-center">
+            <Button
+              variant="destructive"
+              onClick={criticalResetAccount}
+              disabled={!serviceProviderInitialized}
+            >
+              <Shield className="mr-2" size={18} /> [CRITICAL] Reset Account
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={() => setLogs([])}
+              className="ml-2"
+            >
+              <RefreshCcw className="mr-2" size={18} /> ログをリセット
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
