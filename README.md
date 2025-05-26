@@ -30,10 +30,12 @@ Web3Auth tKey を使用したセルフホスト型のウォレット管理アプ
 
    - [Firebase Console](https://console.firebase.google.com/)でプロジェクトを作成
    - Authentication > Sign-in method で Google を有効化
+   - Google Cloud Conosle > GoogleDriveAPI を有効化
 
 2. **Web3Auth ダッシュボード**
 
    - [Web3Auth Dashboard](https://dashboard.web3auth.io)でプロジェクトを作成
+   - 上記の Firebase の設定を custom connection として紐付ける。[docs](https://web3auth.io/docs/authentication/custom-connections/firebase)
    - Client ID を取得
 
 3. **ブロックチェーン RPC エンドポイント**
