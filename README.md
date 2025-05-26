@@ -53,12 +53,12 @@ NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id_here
 
 # Web3Auth Configuration
 NEXT_PUBLIC_WEB3AUTH_CLIENT_ID=your_web3auth_client_id_here
-NEXT_PUBLIC_WEB3AUTH_VERIFIER=w3a-firebase-demo
+NEXT_PUBLIC_WEB3AUTH_VERIFIER=your_web3auth_verifier_name
 NEXT_PUBLIC_WEB3AUTH_NETWORK=sapphire_mainnet
 
 # Blockchain Configuration (Sepolia Testnet)
 NEXT_PUBLIC_CHAIN_ID=0xaa36a7
-NEXT_PUBLIC_RPC_TARGET=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
+NEXT_PUBLIC_RPC_TARGET=your_rpc_endpoint
 NEXT_PUBLIC_BLOCK_EXPLORER=https://sepolia.etherscan.io/
 NEXT_PUBLIC_CHAIN_TICKER=ETH
 NEXT_PUBLIC_CHAIN_TICKER_NAME=Ethereum
