@@ -5,24 +5,36 @@ import { ShareSerializationModule } from "@tkey/share-serialization";
 import { WebStorageModule } from "@tkey/web-storage";
 import { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider";
 
-const clientId =
-  "BPi5PB_UiIZ-cPz1GtV5i1I2iOSOHuimiXBI0e-Oe_u6X3oVAbCiAZOTEBtTXw4tsluTITPqA8zMsfxIKMjiqNQ"; // get from https://dashboard.web3auth.io
+const clientId = process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID;
+
+if (!clientId) {
+  throw new Error(
+    "NEXT_PUBLIC_WEB3AUTH_CLIENT_ID is not set in environment variables"
+  );
+}
+
+const rpcTarget = process.env.NEXT_PUBLIC_RPC_TARGET;
+
+if (!rpcTarget) {
+  throw new Error("NEXT_PUBLIC_RPC_TARGET is not set in environment variables");
+}
 
 const chainConfig = {
-  chainId: "0xaa36a7",
-  rpcTarget:
-    "https://eth-sepolia.g.alchemy.com/v2/HG0QWro5aeI5ml7ya5H7gEXhWMS0MOgV",
-  displayName: "sepolia",
-  blockExplorer: "https://sepolia.etherscan.io/",
-  ticker: "ETH",
-  tickerName: "Ethereum",
+  chainId: process.env.NEXT_PUBLIC_CHAIN_ID || "0xaa36a7",
+  rpcTarget: rpcTarget,
+  displayName: process.env.NEXT_PUBLIC_CHAIN_DISPLAY_NAME || "sepolia",
+  blockExplorer:
+    process.env.NEXT_PUBLIC_BLOCK_EXPLORER || "https://sepolia.etherscan.io/",
+  ticker: process.env.NEXT_PUBLIC_CHAIN_TICKER || "ETH",
+  tickerName: process.env.NEXT_PUBLIC_CHAIN_TICKER_NAME || "Ethereum",
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const web3AuthOptions: any = {
-  clientId, // Get your Client ID from Web3Auth Dashboard
+  clientId,
   chainConfig,
-  web3AuthNetwork: "sapphire_mainnet",
+  web3AuthNetwork:
+    process.env.NEXT_PUBLIC_WEB3AUTH_NETWORK || "sapphire_mainnet",
 };
 
 // Configuration of Service Provider
@@ -34,9 +46,17 @@ export const ethereumPrivateKeyProvider = new EthereumPrivateKeyProvider({
   },
 });
 
+const torusHostUrl = process.env.NEXT_PUBLIC_TORUS_HOST_URL;
+
+if (!torusHostUrl) {
+  throw new Error(
+    "NEXT_PUBLIC_TORUS_HOST_URL is not set in environment variables"
+  );
+}
+
 // Instantiation of Storage Layer
 const storageLayer = new TorusStorageLayer({
-  hostUrl: "https://metadata.tor.us",
+  hostUrl: torusHostUrl,
 });
 
 // Configuration of Modules

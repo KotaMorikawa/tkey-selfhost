@@ -18,6 +18,8 @@ import {
   FileKey2,
   Wallet,
   HardDrive,
+  Save,
+  UploadCloud,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,21 +32,21 @@ import {
   getAuth,
   signInWithPopup,
   UserCredential,
+  OAuthProvider,
 } from "firebase/auth";
 
 import { IProvider } from "@web3auth/base";
 import Link from "next/link";
 
-const verifier = "w3a-firebase-demo";
+const verifier =
+  process.env.NEXT_PUBLIC_WEB3AUTH_VERIFIER || "w3a-firebase-demo";
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyB0nd9YsPLu-tpdCrsXn8wgsWVAiYEpQ_E",
-  authDomain: "web3auth-oauth-logins.firebaseapp.com",
-  projectId: "web3auth-oauth-logins",
-  storageBucket: "web3auth-oauth-logins.appspot.com",
-  messagingSenderId: "461819774167",
-  appId: "1:461819774167:web:e74addfb6cc88f3b5b9c92",
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
 };
 
 function App() {
@@ -59,12 +61,19 @@ function App() {
     displayName: null,
   });
   const [recoveryShare, setRecoveryShare] = useState<string>("");
-  const [mnemonicShare, setMnemonicShare] = useState<string>("");
   const [serviceProviderInitialized, setServiceProviderInitialized] =
     useState(false);
   const [logs, setLogs] = useState<string[]>([
     "Service Provider Initialized successfully.",
   ]);
+  const [googleDriveAuthenticated, setGoogleDriveAuthenticated] =
+    useState(false);
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(
+    null
+  );
+  const [googleDriveFileId, setGoogleDriveFileId] = useState<string | null>(
+    null
+  );
 
   const addLog = (...args: unknown[]): void => {
     const message: string = args
@@ -116,6 +125,35 @@ function App() {
     } catch (err) {
       console.error(err);
       throw err;
+    }
+  };
+
+  const authenticateWithGoogleDrive = async (): Promise<string | null> => {
+    try {
+      const auth = getAuth(app);
+      const provider = new OAuthProvider("google.com");
+      provider.addScope("https://www.googleapis.com/auth/drive.file");
+      const result = await signInWithPopup(auth, provider);
+      const credential = OAuthProvider.credentialFromResult(result);
+      if (credential && credential.accessToken) {
+        setGoogleAccessToken(credential.accessToken);
+        setGoogleDriveAuthenticated(true);
+        addLog("Google Drive authentication successful.");
+        return credential.accessToken;
+      } else {
+        addLog("Failed to get Google Drive access token.");
+        setGoogleDriveAuthenticated(false);
+        setGoogleAccessToken(null);
+        return null;
+      }
+    } catch (error) {
+      addLog(
+        "Google Drive authentication failed:",
+        error instanceof Error ? error.message : String(error)
+      );
+      setGoogleDriveAuthenticated(false);
+      setGoogleAccessToken(null);
+      return null;
     }
   };
 
@@ -247,7 +285,25 @@ function App() {
     }
   };
 
-  const generateMnemonic = async () => {
+  const generateMnemonicAndSaveToDrive = async () => {
+    let currentAccessToken = googleAccessToken;
+
+    if (!googleDriveAuthenticated || !currentAccessToken) {
+      addLog("Google Drive authentication required. Initiating...");
+      currentAccessToken = await authenticateWithGoogleDrive();
+      if (!currentAccessToken) {
+        addLog(
+          "Google Drive authentication failed or was cancelled. Backup aborted."
+        );
+        return;
+      }
+    }
+
+    if (!tKeyInitialised) {
+      addLog("tKey is not initialized yet.");
+      return;
+    }
+
     try {
       const generateShareResult = await tKey.generateNewShare();
       const share = await tKey.outputShareStore(
@@ -256,48 +312,125 @@ function App() {
       const mnemonic = await (
         tKey.modules.shareSerialization as ShareSerializationModule
       ).serialize(share, "mnemonic");
-      addLog("Mnemonic backup generated.", mnemonic);
-      // 画面に表示するためにステートを更新
-      setMnemonicShare(mnemonic as string);
-      return mnemonic;
+
+      addLog("Mnemonic generated, attempting to save to Google Drive...");
+
+      const response = await fetch("/api/googledrive/saveMnemonic", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          accessToken: currentAccessToken,
+          mnemonic: mnemonic,
+          existingFileId: googleDriveFileId,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        addLog(result.message, "File ID:", result.fileId);
+        if (result.fileId) {
+          setGoogleDriveFileId(result.fileId);
+        }
+      } else {
+        addLog(
+          "Failed to save mnemonic to Google Drive:",
+          result.error,
+          result.details
+        );
+      }
     } catch (error) {
       addLog(
-        "Generate Mnemonic Error:",
+        "Error in generateMnemonicAndSaveToDrive:",
         error instanceof Error ? error.message : String(error)
       );
     }
   };
 
-  const recoverFromMnemonic = async () => {
-    if (!mnemonicShare) {
-      addLog("Mnemonic share is empty.");
+  const recoverFromDriveAndMnemonic = async () => {
+    if (!tKeyInitialised) {
+      addLog("tKey not initialized yet. Please login first.");
       return;
     }
-    if (!tKey) {
-      addLog("tKey not initialized yet");
-      return;
-    }
-    try {
-      const share = await (
-        tKey.modules.shareSerialization as ShareSerializationModule
-      ).deserialize(mnemonicShare, "mnemonic");
 
-      // ニーモニックから変換したシェアを直接inputShareに渡す
-      await tKey.inputShare(share.toString("hex"));
+    let currentAccessToken = googleAccessToken;
 
-      // シェアが揃ったか確認し、揃っていればreconstructKey
-      const { requiredShares } = tKey.getKeyDetails();
-      if (requiredShares === 0) {
-        await reconstructKey();
-        addLog("Recovery from Mnemonic Successful");
-      } else {
-        addLog("More shares are required.", requiredShares);
+    // Google Drive認証が必要な場合は自動的に実行
+    if (!googleDriveAuthenticated || !currentAccessToken) {
+      addLog(
+        "Google Drive authentication required for recovery. Initiating..."
+      );
+      currentAccessToken = await authenticateWithGoogleDrive();
+      if (!currentAccessToken) {
+        addLog(
+          "Google Drive authentication failed or was cancelled. Recovery aborted."
+        );
+        return;
       }
+    }
 
-      return share;
+    try {
+      addLog("Attempting to recover mnemonic from Google Drive...");
+      const response = await fetch("/api/googledrive/getMnemonic", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          accessToken: currentAccessToken,
+          fileId: googleDriveFileId,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success && result.mnemonic) {
+        addLog(
+          "Mnemonic successfully retrieved from Google Drive.",
+          "File ID:",
+          result.fileId
+        );
+        if (result.fileId) {
+          setGoogleDriveFileId(result.fileId);
+        }
+
+        const decryptedMnemonic = result.mnemonic;
+
+        const share = await (
+          tKey.modules.shareSerialization as ShareSerializationModule
+        ).deserialize(decryptedMnemonic, "mnemonic");
+
+        await tKey.inputShare(share.toString("hex"));
+
+        const { requiredShares } = tKey.getKeyDetails();
+        if (requiredShares === 0) {
+          await reconstructKey();
+          addLog("Key successfully reconstructed from Google Drive Mnemonic.");
+        } else {
+          addLog(
+            "Mnemonic share inputted. More shares are required:",
+            requiredShares
+          );
+        }
+      } else {
+        // より詳細なエラーハンドリング
+        if (response.status === 404) {
+          addLog(
+            "No backup file found on Google Drive. Please create a backup first using 'Backup New Share to Google Drive'."
+          );
+        } else {
+          addLog(
+            "Failed to recover mnemonic from Google Drive:",
+            result.error,
+            result.details
+          );
+        }
+      }
     } catch (error) {
       addLog(
-        "Mnemonic Recovery Error:",
+        "Error in recoverFromDriveAndMnemonic:",
         error instanceof Error ? error.message : String(error)
       );
     }
@@ -313,7 +446,6 @@ function App() {
     setUserInfo({ uid: "", displayName: null });
     setTKeyInitialised(false); // tKeyの初期化状態もリセット
     setRecoveryShare(""); // リカバリーシェアもクリア
-    setMnemonicShare(""); // ニーモニックシェアもクリア
     addLog("User logged out.");
   };
 
@@ -363,7 +495,7 @@ function App() {
     const signedMessage = await web3.eth.personal.sign(
       originalMessage,
       fromAddress,
-      "test password!" // configure your own password here.
+      process.env.NEXT_PUBLIC_TEST_PASSWORD || "test password!" // configure your own password here.
     );
     addLog("Message signed.", signedMessage);
   };
@@ -372,10 +504,8 @@ function App() {
     // This is a critical function that should only be used for testing purposes
     // Resetting your account means clearing all the metadata associated with it from the metadata server
     // The key details will be deleted from our server and you will not be able to recover your account
-    if (!tKeyInitialised && !tKey.serviceProvider.postboxKey) {
-      addLog(
-        "tKey is not initialized or postboxKey is not available. Cannot reset account."
-      );
+    if (!tKeyInitialised) {
+      addLog("tKey is not initialized. Cannot reset account.");
       return;
     }
     try {
@@ -431,8 +561,13 @@ function App() {
       <Button variant="outline" onClick={keyDetails}>
         <KeyRound size={18} className="mr-2" /> Key Details
       </Button>
-      <Button variant="outline" onClick={generateMnemonic}>
-        <FileKey2 size={18} className="mr-2" /> Generate Backup
+
+      <Button
+        variant="outline"
+        onClick={generateMnemonicAndSaveToDrive}
+        className="sm:col-span-2"
+      >
+        <Save size={18} className="mr-2" /> Backup New Share to Google Drive
       </Button>
       <Button variant="outline" onClick={getAccounts}>
         <Wallet size={18} className="mr-2" /> Get Accounts
@@ -442,9 +577,6 @@ function App() {
       </Button>
       <Button variant="outline" onClick={signMessage}>
         <Copy size={18} className="mr-2" /> Sign Message
-      </Button>
-      <Button variant="destructive" onClick={criticalResetAccount}>
-        <Shield size={18} className="mr-2" /> [CRITICAL] Reset Account
       </Button>
       <Button onClick={logout}>
         <LogOut size={18} className="mr-2" /> Log Out
@@ -500,31 +632,16 @@ function App() {
         onClick={inputRecoveryShareFromDevice}
         disabled={!tKeyInitialised || !recoveryShare}
       >
-        <KeyRound className="mr-2" size={18} /> Input Recovery Share
+        <KeyRound className="mr-2" size={18} /> Login with Device Share
       </Button>
-
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-slate-600 flex items-center gap-1">
-          <FileKey2 size={14} /> Recover Using Mnemonic Share
-        </label>
-        <Input
-          placeholder="Paste your mnemonic share…"
-          value={mnemonicShare}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setMnemonicShare(e.target.value)
-          }
-          disabled={!tKeyInitialised}
-        />
-      </div>
 
       <Button
         variant="secondary"
         className="w-full"
-        onClick={recoverFromMnemonic}
-        disabled={!tKeyInitialised || !mnemonicShare}
+        onClick={recoverFromDriveAndMnemonic}
+        disabled={!tKeyInitialised}
       >
-        <RefreshCcw className="mr-2" size={18} /> Get Recovery Share using
-        Mnemonic
+        <UploadCloud className="mr-2" size={18} /> Restore from Google Drive
       </Button>
     </motion.div>
   );
@@ -544,7 +661,7 @@ function App() {
             <Button
               variant="destructive"
               onClick={criticalResetAccount}
-              disabled={!serviceProviderInitialized}
+              disabled={!serviceProviderInitialized || !tKeyInitialised}
             >
               <Shield className="mr-2" size={18} /> [CRITICAL] Reset Account
             </Button>
