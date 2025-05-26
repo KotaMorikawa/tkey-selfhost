@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { accessToken, mnemonic, existingFileId } = await request.json();
+    const { accessToken, mnemonic } = await request.json();
 
     if (!accessToken || !mnemonic) {
       return NextResponse.json(
@@ -46,48 +46,37 @@ export async function POST(request: Request) {
       body: encryptedMnemonic,
     };
 
-    let fileIdToUpdate = existingFileId;
+    // 同じ名前のファイルが既に存在するかチェック
+    const resSearch = await drive.files.list({
+      q: `name='${BACKUP_FILE_NAME}' and trashed=false`, // ゴミ箱に入っていないファイルのみ検索
+      spaces: "drive",
+      fields: "files(id, name)",
+    });
 
-    // もしクライアントから既存ファイルIDが渡されなかった場合、検索する
-    // (より堅牢にするには、ユーザーIDに紐付けてファイルIDをDB等で管理することを推奨)
-    if (!fileIdToUpdate) {
-      const resSearch = await drive.files.list({
-        q: `name='${BACKUP_FILE_NAME}' and trashed=false`, // ゴミ箱に入っていないファイルのみ検索
-        spaces: "drive",
-        fields: "files(id, name)",
-      });
-      if (
-        resSearch.data.files &&
-        resSearch.data.files.length > 0 &&
-        resSearch.data.files[0].id
-      ) {
-        fileIdToUpdate = resSearch.data.files[0].id;
-      }
+    if (resSearch.data.files && resSearch.data.files.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "A backup file with the same name already exists on Google Drive.",
+          existingFileId: resSearch.data.files[0].id,
+          message:
+            "Please delete the existing file first before creating a new backup.",
+        },
+        { status: 409 } // Conflict status code
+      );
     }
 
-    if (fileIdToUpdate) {
-      const res = await drive.files.update({
-        fileId: fileIdToUpdate,
-        media: media,
-        fields: "id", // 更新されたファイルのIDを取得
-      });
-      return NextResponse.json({
-        success: true,
-        fileId: res.data.id,
-        message: "Mnemonic backup updated on Google Drive.",
-      });
-    } else {
-      const res = await drive.files.create({
-        requestBody: fileMetadata,
-        media: media,
-        fields: "id",
-      });
-      return NextResponse.json({
-        success: true,
-        fileId: res.data.id,
-        message: "Mnemonic backup saved to Google Drive.",
-      });
-    }
+    // 新規ファイル作成
+    const res = await drive.files.create({
+      requestBody: fileMetadata,
+      media: media,
+      fields: "id",
+    });
+    return NextResponse.json({
+      success: true,
+      fileId: res.data.id,
+      message: "Mnemonic backup saved to Google Drive.",
+    });
   } catch (error) {
     console.error("Error saving mnemonic to Google Drive:", error);
     const errorMessage = error instanceof Error ? error.message : String(error);
