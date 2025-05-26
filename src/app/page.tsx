@@ -63,9 +63,9 @@ function App() {
   const [recoveryShare, setRecoveryShare] = useState<string>("");
   const [serviceProviderInitialized, setServiceProviderInitialized] =
     useState(false);
-  const [logs, setLogs] = useState<string[]>([
-    "Service Provider Initialized successfully.",
-  ]);
+  const [logs, setLogs] = useState<
+    Array<{ timestamp: string; message: string; id: number }>
+  >([]);
   const [googleDriveAuthenticated, setGoogleDriveAuthenticated] =
     useState(false);
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(
@@ -76,10 +76,34 @@ function App() {
   );
 
   const addLog = (...args: unknown[]): void => {
+    const timestamp = new Date().toLocaleTimeString("ja-JP");
     const message: string = args
       .map((arg) => {
         if (typeof arg === "string") return arg;
+        if (typeof arg === "number" || typeof arg === "boolean")
+          return String(arg);
+        if (arg === null || arg === undefined) return String(arg);
         try {
+          // オブジェクトの場合、重要な情報のみを表示
+          if (typeof arg === "object") {
+            if (Array.isArray(arg)) {
+              return `[${arg.length} items]`;
+            }
+            // 特定のプロパティのみを表示
+            const simplified = Object.keys(arg).reduce(
+              (acc: Record<string, unknown>, key) => {
+                if (
+                  key.length < 20 &&
+                  typeof (arg as Record<string, unknown>)[key] !== "function"
+                ) {
+                  acc[key] = (arg as Record<string, unknown>)[key];
+                }
+                return acc;
+              },
+              {}
+            );
+            return JSON.stringify(simplified, null, 2);
+          }
           return JSON.stringify(arg, null, 2);
         } catch (e: unknown) {
           console.error("Failed to stringify argument:", e);
@@ -87,7 +111,14 @@ function App() {
         }
       })
       .join(" ");
-    setLogs((prevLogs) => [message, ...prevLogs]);
+
+    const logEntry = {
+      timestamp,
+      message,
+      id: Date.now() + Math.random(),
+    };
+
+    setLogs((prevLogs) => [logEntry, ...prevLogs]);
     console.log(...args);
   };
 
@@ -542,10 +573,56 @@ function App() {
     </h1>
   );
 
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      // 簡単なフィードバック（必要に応じて toast などに変更可能）
+      console.log("コピーしました:", text);
+    } catch (err) {
+      console.error("コピーに失敗しました:", err);
+      // フォールバック: 古いブラウザ対応
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+    }
+  };
+
   const LogViewer = () => (
-    <pre className="mt-6 h-40 overflow-y-auto rounded-lg bg-slate-900 text-slate-200 p-4 text-sm shadow-inner">
-      {JSON.stringify(logs, null, 2)}
-    </pre>
+    <div className="mt-6 h-40 rounded-lg bg-slate-900 shadow-inner overflow-hidden">
+      <div className="h-full overflow-y-auto overflow-x-hidden p-4 text-sm text-slate-200 space-y-2 custom-scrollbar">
+        {logs.length === 0 ? (
+          <div className="text-slate-400 italic">ログはありません</div>
+        ) : (
+          logs.map((log) => (
+            <div
+              key={log.id}
+              className="border-b border-slate-700 pb-2 last:border-b-0 group"
+            >
+              <div className="flex justify-between items-start">
+                <div className="flex-1 min-w-0">
+                  <div className="text-slate-400 text-xs mb-1">
+                    {log.timestamp}
+                  </div>
+                  <div className="text-slate-200 whitespace-pre-wrap break-words break-all overflow-wrap-anywhere">
+                    {log.message}
+                  </div>
+                </div>
+                <button
+                  onClick={() => copyToClipboard(log.message)}
+                  className="ml-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-slate-200"
+                  title="メッセージをコピー"
+                >
+                  <Copy size={14} />
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   );
 
   const loggedInView = (
